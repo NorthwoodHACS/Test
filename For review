@@ -1,0 +1,1326 @@
+{
+  "meta": {
+    "instanceId": "local-deep-research-instance",
+    "templateCredsSetupCompleted": false
+  },
+  "nodes": [
+    {
+      "id": "start-form",
+      "name": "Deep Research Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "position": [100, 300],
+      "webhookId": "deep-research-form",
+      "parameters": {
+        "options": {
+          "path": "local_deep_research",
+          "ignoreBots": true,
+          "buttonLabel": "Start Research"
+        },
+        "formTitle": "Local Deep Research Assistant",
+        "formFields": {
+          "values": [
+            {
+              "fieldType": "textarea",
+              "fieldLabel": "What would you like to research?",
+              "fieldName": "research_query",
+              "requiredField": true,
+              "placeholder": "Enter your research topic or question..."
+            },
+            {
+              "fieldType": "dropdown",
+              "fieldLabel": "Research Depth",
+              "fieldName": "depth",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {"option": "1 - Quick Overview"},
+                  {"option": "2 - Standard Research"},
+                  {"option": "3 - Comprehensive Analysis"},
+                  {"option": "4 - Deep Investigation"},
+                  {"option": "5 - Exhaustive Study"}
+                ]
+              }
+            },
+            {
+              "fieldType": "dropdown",
+              "fieldLabel": "Search Breadth (sources per iteration)",
+              "fieldName": "breadth",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {"option": "2 - Focused"},
+                  {"option": "3 - Balanced"},
+                  {"option": "5 - Wide Coverage"},
+                  {"option": "8 - Extensive"},
+                  {"option": "10 - Maximum"}
+                ]
+              }
+            },
+            {
+              "fieldType": "multiselect",
+              "fieldLabel": "Research Categories",
+              "fieldName": "categories",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {"option": "general"},
+                  {"option": "news"},
+                  {"option": "science"},
+                  {"option": "technology"},
+                  {"option": "academic"},
+                  {"option": "social media"},
+                  {"option": "images"},
+                  {"option": "videos"}
+                ]
+              }
+            },
+            {
+              "fieldType": "dropdown",
+              "fieldLabel": "Time Range",
+              "fieldName": "time_range",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {"option": "all - All Time"},
+                  {"option": "day - Past Day"},
+                  {"option": "week - Past Week"},
+                  {"option": "month - Past Month"},
+                  {"option": "year - Past Year"}
+                ]
+              }
+            },
+            {
+              "fieldType": "multiselect",
+              "fieldLabel": "Search Engines",
+              "fieldName": "engines",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {"option": "google"},
+                  {"option": "bing"},
+                  {"option": "duckduckgo"},
+                  {"option": "startpage"},
+                  {"option": "searx"},
+                  {"option": "wikipedia"}
+                ]
+              }
+            },
+            {
+              "fieldType": "dropdown",
+              "fieldLabel": "Page Depth",
+              "fieldName": "page_depth",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {"option": "1 - First Page"},
+                  {"option": "2 - Two Pages"},
+                  {"option": "3 - Three Pages"},
+                  {"option": "5 - Five Pages"}
+                ]
+              }
+            }
+          ]
+        },
+        "formDescription": "Configure your local deep research parameters. This will use your local Ollama, SearXNG, and Crawl4AI instances."
+      },
+      "typeVersion": 2.2
+    },
+    {
+      "id": "process-form-data",
+      "name": "Process Form Data",
+      "type": "n8n-nodes-base.set",
+      "position": [300, 300],
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "research_id",
+              "name": "research_id",
+              "type": "string",
+              "value": "=research_{{ $now.toFormat('yyyyMMdd_HHmmss') }}_{{ $execution.id }}"
+            },
+            {
+              "id": "query",
+              "name": "query",
+              "type": "string", 
+              "value": "={{ $json.research_query }}"
+            },
+            {
+              "id": "depth",
+              "name": "depth",
+              "type": "number",
+              "value": "={{ parseInt($json.depth.split(' - ')[0]) }}"
+            },
+            {
+              "id": "breadth",
+              "name": "breadth",
+              "type": "number",
+              "value": "={{ parseInt($json.breadth.split(' - ')[0]) }}"
+            },
+            {
+              "id": "categories",
+              "name": "categories",
+              "type": "array",
+              "value": "={{ $json.categories }}"
+            },
+            {
+              "id": "time_range",
+              "name": "time_range",
+              "type": "string",
+              "value": "={{ $json.time_range.split(' - ')[0] }}"
+            },
+            {
+              "id": "engines",
+              "name": "engines",
+              "type": "array",
+              "value": "={{ $json.engines }}"
+            },
+            {
+              "id": "page_depth",
+              "name": "page_depth",
+              "type": "number",
+              "value": "={{ parseInt($json.page_depth.split(' - ')[0]) }}"
+            },
+            {
+              "id": "current_iteration",
+              "name": "current_iteration",
+              "type": "number",
+              "value": 0
+            },
+            {
+              "id": "all_learnings",
+              "name": "all_learnings",
+              "type": "array",
+              "value": "=[]"
+            },
+            {
+              "id": "all_urls",
+              "name": "all_urls",
+              "type": "array",
+              "value": "=[]"
+            },
+            {
+              "id": "created_at",
+              "name": "created_at",
+              "type": "string",
+              "value": "={{ $now.toISO() }}"
+            }
+          ]
+        }
+      },
+      "typeVersion": 3.4
+    },
+    {
+      "id": "generate-final-report",
+      "name": "Generate Final Research Report",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "position": [4700, 400],
+      "parameters": {
+        "text": "=Create a comprehensive research report based on the following research query and accumulated learnings from {{ $('update-iteration-data').item.json.current_iteration }} iterations of deep web research.\n\n**Research Query:** {{ $('process-form-data').item.json.query }}\n\n**Research Parameters:**\n- Depth: {{ $('process-form-data').item.json.depth }} iterations\n- Breadth: {{ $('process-form-data').item.json.breadth }} sources per iteration\n- Categories: {{ $('process-form-data').item.json.categories.join(', ') }}\n- Time Range: {{ $('process-form-data').item.json.time_range }}\n- Search Engines: {{ $('process-form-data').item.json.engines.join(', ') }}\n\n**Accumulated Learnings:**\n{{ $('update-iteration-data').item.json.updated_learnings.map((learning, index) => `${index + 1}. ${learning}`).join('\\n') }}\n\n**Total Sources Analyzed:** {{ $('update-iteration-data').item.json.updated_urls.length }}\n\nPlease create a detailed research report in Markdown format that includes:\n\n1. **Executive Summary** - Key findings and conclusions\n2. **Background & Context** - Setting the stage for the research topic\n3. **Key Findings** - Organized thematic analysis of discoveries\n4. **Supporting Evidence** - Details from the research with insights\n5. **Implications & Analysis** - What these findings mean\n6. **Conclusions** - Summary of main takeaways\n7. **Limitations** - Any gaps or limitations in the research\n\nMake the report comprehensive, well-structured, and academically rigorous. Use proper Markdown formatting with headers, bullet points, and emphasis where appropriate.",
+        "promptType": "define",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "HumanMessagePromptTemplate",
+              "message": "You are an expert research analyst and technical writer. Create comprehensive, well-structured research reports based on accumulated research data."
+            }
+          ]
+        }
+      },
+      "typeVersion": 1.5
+    },
+    {
+      "id": "ollama-final-report",
+      "name": "Ollama - Generate Report",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "position": [4900, 400],
+      "parameters": {
+        "model": "nous-hermes2:34b",
+        "options": {
+          "baseURL": "http://localhost:11434",
+          "temperature": 0.2
+        }
+      },
+      "credentials": {
+        "ollamaApi": {
+          "id": "ollama-local",
+          "name": "Local Ollama"
+        }
+      },
+      "typeVersion": 1.2
+    },
+    {
+      "id": "process-final-report",
+      "name": "Process Final Report",
+      "type": "n8n-nodes-base.set",
+      "position": [5100, 400],
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "final_report_markdown",
+              "name": "final_report_markdown",
+              "type": "string",
+              "value": "={{ $json.text }}"
+            },
+            {
+              "id": "report_with_sources",
+              "name": "report_with_sources",
+              "type": "string",
+              "value": "={{ $json.text + '\\n\\n## Sources\\n\\nThe following sources were analyzed during this research:\\n\\n' + $('update-iteration-data').item.json.updated_urls.map((url, index) => `${index + 1}. ${url}`).join('\\n') }}"
+            },
+            {
+              "id": "research_id",
+              "name": "research_id", 
+              "type": "string",
+              "value": "={{ $('update-iteration-data').item.json.research_id }}"
+            },
+            {
+              "id": "total_sources",
+              "name": "total_sources",
+              "type": "number",
+              "value": "={{ $('update-iteration-data').item.json.updated_urls.length }}"
+            },
+            {
+              "id": "total_learnings",
+              "name": "total_learnings",
+              "type": "number",
+              "value": "={{ $('update-iteration-data').item.json.updated_learnings.length }}"
+            }
+          ]
+        }
+      },
+      "typeVersion": 3.4
+    },
+    {
+      "id": "save-final-report-to-db",
+      "name": "Save Final Report to Database",
+      "type": "n8n-nodes-base.postgres",
+      "position": [5300, 400],
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "deep_research_metadata"
+        },
+        "updateKey": "id",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.research_id }}",
+            "status": "completed",
+            "schema": "={{ JSON.stringify({ \n  final_report: $json.report_with_sources,\n  total_sources: $json.total_sources,\n  total_learnings: $json.total_learnings,\n  iterations_completed: $('update-iteration-data').item.json.current_iteration,\n  completed_at: $now.toISO()\n}) }}"
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "postgres-local",
+          "name": "Local PostgreSQL"
+        }
+      },
+      "typeVersion": 2.4
+    },
+    {
+      "id": "display-final-results",
+      "name": "Display Research Results",
+      "type": "n8n-nodes-base.set",
+      "position": [5500, 400],
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "research_complete",
+              "name": "research_complete",
+              "type": "boolean",
+              "value": "=true"
+            },
+            {
+              "id": "research_id",
+              "name": "research_id",
+              "type": "string", 
+              "value": "={{ $('process-final-report').item.json.research_id }}"
+            },
+            {
+              "id": "original_query",
+              "name": "original_query",
+              "type": "string",
+              "value": "={{ $('process-form-data').item.json.query }}"
+            },
+            {
+              "id": "iterations_completed",
+              "name": "iterations_completed",
+              "type": "number",
+              "value": "={{ $('update-iteration-data').item.json.current_iteration }}"
+            },
+            {
+              "id": "total_sources_analyzed",
+              "name": "total_sources_analyzed",
+              "type": "number",
+              "value": "={{ $('process-final-report').item.json.total_sources }}"
+            },
+            {
+              "id": "total_learnings_generated",
+              "name": "total_learnings_generated", 
+              "type": "number",
+              "value": "={{ $('process-final-report').item.json.total_learnings }}"
+            },
+            {
+              "id": "final_report_markdown",
+              "name": "final_report_markdown",
+              "type": "string",
+              "value": "={{ $('process-final-report').item.json.report_with_sources }}"
+            },
+            {
+              "id": "research_summary",
+              "name": "research_summary",
+              "type": "string",
+              "value": "=## Deep Research Complete! 🎉\\n\\n**Research ID:** {{ $('process-final-report').item.json.research_id }}\\n**Query:** {{ $('process-form-data').item.json.query }}\\n**Iterations:** {{ $('update-iteration-data').item.json.current_iteration }}\\n**Sources Analyzed:** {{ $('process-final-report').item.json.total_sources }}\\n**Learnings Generated:** {{ $('process-final-report').item.json.total_learnings }}\\n\\n**Status:** Research completed and saved to database\\n\\n---\\n\\n{{ $('process-final-report').item.json.report_with_sources }}"
+            }
+          ]
+        }
+      },
+      "executeOnce": true,
+      "typeVersion": 3.4
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "start-form": {
+      "main": [
+        [
+          {
+            "node": "process-form-data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "process-form-data": {
+      "main": [
+        [
+          {
+            "node": "create-db-record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create-db-record": {
+      "main": [
+        [
+          {
+            "node": "update-status-researching",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "update-status-researching": {
+      "main": [
+        [
+          {
+            "node": "generate-search-queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "generate-search-queries": {
+      "main": [
+        [
+          {
+            "node": "parse-queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ollama-search-queries": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "generate-search-queries",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "parse-queries": {
+      "main": [
+        [
+          {
+            "node": "split-queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "split-queries": {
+      "main": [
+        [
+          {
+            "node": "search-with-searxng",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "search-with-searxng": {
+      "main": [
+        [
+          {
+            "node": "extract-search-results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "extract-search-results": {
+      "main": [
+        [
+          {
+            "node": "split-search-results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "split-search-results": {
+      "main": [
+        [
+          {
+            "node": "filter-valid-urls",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "filter-valid-urls": {
+      "main": [
+        [
+          {
+            "node": "crawl-with-crawl4ai",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "crawl-with-crawl4ai": {
+      "main": [
+        [
+          {
+            "node": "process-crawl-results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "process-crawl-results": {
+      "main": [
+        [
+          {
+            "node": "filter-successful-crawls",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "filter-successful-crawls": {
+      "main": [
+        [
+          {
+            "node": "aggregate-crawled-content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "aggregate-crawled-content": {
+      "main": [
+        [
+          {
+            "node": "generate-learnings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "generate-learnings": {
+      "main": [
+        [
+          {
+            "node": "process-learnings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ollama-learnings": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "generate-learnings",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "process-learnings": {
+      "main": [
+        [
+          {
+            "node": "aggregate-all-learnings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "aggregate-all-learnings": {
+      "main": [
+        [
+          {
+            "node": "update-iteration-data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "update-iteration-data": {
+      "main": [
+        [
+          {
+            "node": "save-iteration-to-db",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "save-iteration-to-db": {
+      "main": [
+        [
+          {
+            "node": "check-depth-limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check-depth-limit": {
+      "main": [
+        [
+          {
+            "node": "continue-research-loop",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "generate-final-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "continue-research-loop": {
+      "main": [
+        [
+          {
+            "node": "generate-search-queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "generate-final-report": {
+      "main": [
+        [
+          {
+            "node": "process-final-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ollama-final-report": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "generate-final-report",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "process-final-report": {
+      "main": [
+        [
+          {
+            "node": "save-final-report-to-db",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "save-final-report-to-db": {
+      "main": [
+        [
+          {
+            "node": "display-final-results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
+    {
+      "id": "create-db-record",
+      "name": "Create Database Record",
+      "type": "n8n-nodes-base.postgres",
+      "position": [500, 300],
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list", 
+          "value": "deep_research_metadata"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.research_id }}",
+            "title": "={{ $json.query }}",
+            "created_at": "={{ $json.created_at }}",
+            "description": "=Research query: {{ $json.query }}. Depth: {{ $json.depth }}, Breadth: {{ $json.breadth }}, Categories: {{ $json.categories.join(', ') }}",
+            "schema": "={}",
+            "status": "initializing",
+            "learnings_iteration_1": "",
+            "learnings_iteration_2": "",
+            "learnings_iteration_3": "", 
+            "learnings_iteration_4": "",
+            "learnings_iteration_5": ""
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "postgres-local",
+          "name": "Local PostgreSQL"
+        }
+      },
+      "typeVersion": 2.4
+    },
+    {
+      "id": "update-status-researching",
+      "name": "Update Status - Researching",
+      "type": "n8n-nodes-base.postgres",
+      "position": [700, 300],
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "deep_research_metadata"
+        },
+        "updateKey": "id",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('process-form-data').item.json.research_id }}",
+            "status": "researching"
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "postgres-local",
+          "name": "Local PostgreSQL"
+        }
+      },
+      "typeVersion": 2.4
+    },
+    {
+      "id": "generate-search-queries",
+      "name": "Generate Search Queries",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "position": [900, 300],
+      "parameters": {
+        "text": "=Given the user's research query, generate {{ $('process-form-data').item.json.breadth }} distinct search queries to thoroughly research the topic.\n\nUser Query: {{ $('process-form-data').item.json.query }}\nCategories: {{ $('process-form-data').item.json.categories.join(', ') }}\nCurrent Iteration: {{ $json.current_iteration + 1 }}/{{ $('process-form-data').item.json.depth }}\n\nPrevious learnings to build upon:\n{{ $json.all_learnings.length > 0 ? $json.all_learnings.join('\\n- ') : 'None - this is the first iteration' }}\n\nGenerate search queries that:\n1. Cover different aspects of the topic\n2. Build on previous learnings\n3. Are optimized for web search\n4. Focus on the specified categories\n5. Each query should be unique and specific\n\nReturn only the search queries, one per line:",
+        "promptType": "define",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "HumanMessagePromptTemplate", 
+              "message": "You are an expert research assistant. Generate focused search queries for comprehensive topic research."
+            }
+          ]
+        }
+      },
+      "typeVersion": 1.5
+    },
+    {
+      "id": "ollama-search-queries",
+      "name": "Ollama - Search Queries",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "position": [1100, 300],
+      "parameters": {
+        "model": "nous-hermes2:34b",
+        "options": {
+          "baseURL": "http://localhost:11434",
+          "temperature": 0.3
+        }
+      },
+      "credentials": {
+        "ollamaApi": {
+          "id": "ollama-local",
+          "name": "Local Ollama"
+        }
+      },
+      "typeVersion": 1.2
+    },
+    {
+      "id": "parse-queries",
+      "name": "Parse Search Queries",
+      "type": "n8n-nodes-base.set",
+      "position": [1300, 300],
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "queries",
+              "name": "queries",
+              "type": "array",
+              "value": "={{ $json.text.split('\\n').filter(line => line.trim().length > 0).map(query => query.trim().replace(/^\\d+\\.\\s*/, '').replace(/^[-*]\\s*/, '')) }}"
+            },
+            {
+              "id": "research_data",
+              "name": "research_data", 
+              "type": "object",
+              "value": "={{ $('process-form-data').item.json }}"
+            }
+          ]
+        }
+      },
+      "typeVersion": 3.4
+    },
+    {
+      "id": "split-queries",
+      "name": "Split Queries for Processing",
+      "type": "n8n-nodes-base.splitOut",
+      "position": [1500, 300],
+      "parameters": {
+        "options": {},
+        "fieldToSplitOut": "queries"
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "search-with-searxng",
+      "name": "Search with SearXNG",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1700, 300],
+      "parameters": {
+        "url": "http://localhost:8090/search",
+        "method": "GET",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.queries }}"
+            },
+            {
+              "name": "format",
+              "value": "json"
+            },
+            {
+              "name": "categories",
+              "value": "={{ $('parse-queries').item.json.research_data.categories.join(',') }}"
+            },
+            {
+              "name": "engines", 
+              "value": "={{ $('parse-queries').item.json.research_data.engines.join(',') }}"
+            },
+            {
+              "name": "time_range",
+              "value": "={{ $('parse-queries').item.json.research_data.time_range }}"
+            },
+            {
+              "name": "pageno",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "extract-search-results",
+      "name": "Extract Search Results",
+      "type": "n8n-nodes-base.set",
+      "position": [1900, 300],
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "search_results",
+              "name": "search_results",
+              "type": "array",
+              "value": "={{ $json.results || [] }}"
+            },
+            {
+              "id": "query_used",
+              "name": "query_used",
+              "type": "string",
+              "value": "={{ $('split-queries').item.json.queries }}"
+            }
+          ]
+        }
+      },
+      "typeVersion": 3.4
+    },
+    {
+      "id": "split-search-results",
+      "name": "Split Search Results",
+      "type": "n8n-nodes-base.splitOut",
+      "position": [2100, 300],
+      "parameters": {
+        "options": {},
+        "fieldToSplitOut": "search_results"
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "filter-valid-urls",
+      "name": "Filter Valid URLs",
+      "type": "n8n-nodes-base.filter",
+      "position": [2300, 300],
+      "parameters": {
+        "options": {},
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "has-url",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.search_results.url }}",
+              "rightValue": ""
+            },
+            {
+              "id": "not-pdf",
+              "operator": {
+                "type": "string",
+                "operation": "notContains"
+              },
+              "leftValue": "={{ $json.search_results.url }}",
+              "rightValue": ".pdf"
+            }
+          ]
+        }
+      },
+      "typeVersion": 2.2
+    },
+    {
+      "id": "crawl-with-crawl4ai",
+      "name": "Crawl with Crawl4AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [2500, 300],
+      "parameters": {
+        "url": "http://localhost:11235/crawl",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"urls\": [\"{{ $json.search_results.url }}\"],\n  \"word_count_threshold\": 200,\n  \"extraction_strategy\": \"LLMExtractionStrategy\",\n  \"instruction\": \"Extract the main content, key facts, and important information from this webpage. Focus on factual information relevant to the topic.\",\n  \"chunking_strategy\": {\n    \"type\": \"RegexChunking\",\n    \"patterns\": [\"\\n\\n\", \"\\n\"]\n  },\n  \"css_selector\": \"article, main, .content, .post-content, .entry-content, p\"\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "process-crawl-results",
+      "name": "Process Crawl Results", 
+      "type": "n8n-nodes-base.set",
+      "position": [2700, 300],
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "url",
+              "name": "url",
+              "type": "string",
+              "value": "={{ $('filter-valid-urls').item.json.search_results.url }}"
+            },
+            {
+              "id": "title",
+              "name": "title", 
+              "type": "string",
+              "value": "={{ $('filter-valid-urls').item.json.search_results.title || 'No title' }}"
+            },
+            {
+              "id": "content",
+              "name": "content",
+              "type": "string",
+              "value": "={{ $json.results?.[0]?.extracted_content || '' }}"
+            },
+            {
+              "id": "success",
+              "name": "success",
+              "type": "boolean",
+              "value": "={{ $json.success === true && ($json.results?.[0]?.extracted_content?.length || 0) > 100 }}"
+            }
+          ]
+        }
+      },
+      "typeVersion": 3.4
+    },
+    {
+      "id": "filter-successful-crawls",
+      "name": "Filter Successful Crawls",
+      "type": "n8n-nodes-base.filter",
+      "position": [2900, 300],
+      "parameters": {
+        "options": {},
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "success-check",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.success }}",
+              "rightValue": ""
+            }
+          ]
+        }
+      },
+      "typeVersion": 2.2,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "aggregate-crawled-content",
+      "name": "Aggregate Crawled Content",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [3100, 300], 
+      "parameters": {
+        "options": {},
+        "aggregate": "aggregateAllItemData"
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "generate-learnings",
+      "name": "Generate Learnings from Content",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "position": [3300, 300],
+      "parameters": {
+        "text": "=Based on the following web content related to the search query \"{{ $('extract-search-results').item.json.query_used }}\", extract key learnings and insights.\n\nContent from {{ $json.data.length }} sources:\n\n{{ $json.data.map((item, index) => `Source ${index + 1}: ${item.title}\\nURL: ${item.url}\\nContent: ${item.content.substring(0, 3000)}...\\n\\n`).join('') }}\n\nPlease provide:\n1. Key facts and insights (max 3 most important)\n2. Important data points, statistics, or findings\n3. Relevant context or implications\n\nFocus on factual information that advances understanding of the research topic. Be concise but comprehensive.\n\nFormat each learning as a clear, standalone statement.",
+        "promptType": "define",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "HumanMessagePromptTemplate",
+              "message": "You are an expert research analyst. Extract the most valuable and factual insights from web content to support comprehensive research."
+            }
+          ]
+        }
+      },
+      "typeVersion": 1.5
+    },
+    {
+      "id": "ollama-learnings",
+      "name": "Ollama - Generate Learnings",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "position": [3500, 300],
+      "parameters": {
+        "model": "nous-hermes2:34b",
+        "options": {
+          "baseURL": "http://localhost:11434",
+          "temperature": 0.1
+        }
+      },
+      "credentials": {
+        "ollamaApi": {
+          "id": "ollama-local", 
+          "name": "Local Ollama"
+        }
+      },
+      "typeVersion": 1.2
+    },
+    {
+      "id": "process-learnings",
+      "name": "Process Generated Learnings",
+      "type": "n8n-nodes-base.set",
+      "position": [3700, 300],
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "new_learnings",
+              "name": "new_learnings",
+              "type": "array",
+              "value": "={{ $json.text.split('\\n').filter(line => line.trim().length > 20).map(learning => learning.trim().replace(/^\\d+\\.\\s*/, '').replace(/^[-*]\\s*/, '')) }}"
+            },
+            {
+              "id": "urls_from_batch",
+              "name": "urls_from_batch",
+              "type": "array", 
+              "value": "={{ $('aggregate-crawled-content').item.json.data.map(item => item.url) }}"
+            },
+            {
+              "id": "query_used",
+              "name": "query_used",
+              "type": "string",
+              "value": "={{ $('extract-search-results').item.json.query_used }}"
+            }
+          ]
+        }
+      },
+      "typeVersion": 3.4
+    },
+    {
+      "id": "aggregate-all-learnings",
+      "name": "Aggregate All Query Learnings",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [3900, 300],
+      "parameters": {
+        "options": {},
+        "aggregate": "aggregateAllItemData"
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "update-iteration-data",
+      "name": "Update Iteration Data",
+      "type": "n8n-nodes-base.set",
+      "position": [4100, 300],
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "research_id",
+              "name": "research_id",
+              "type": "string",
+              "value": "={{ $('process-form-data').item.json.research_id }}"
+            },
+            {
+              "id": "current_iteration",
+              "name": "current_iteration",
+              "type": "number",
+              "value": "={{ $('process-form-data').item.json.current_iteration + 1 }}"
+            },
+            {
+              "id": "max_depth",
+              "name": "max_depth", 
+              "type": "number",
+              "value": "={{ $('process-form-data').item.json.depth }}"
+            },
+            {
+              "id": "updated_learnings",
+              "name": "updated_learnings",
+              "type": "array",
+              "value": "={{ $('process-form-data').item.json.all_learnings.concat($json.data.flatMap(item => item.new_learnings)) }}"
+            },
+            {
+              "id": "updated_urls", 
+              "name": "updated_urls",
+              "type": "array",
+              "value": "={{ $('process-form-data').item.json.all_urls.concat($json.data.flatMap(item => item.urls_from_batch)) }}"
+            },
+            {
+              "id": "iteration_learnings",
+              "name": "iteration_learnings",
+              "type": "string",
+              "value": "={{ $json.data.flatMap(item => item.new_learnings).join('\\n• ') }}"
+            }
+          ]
+        }
+      },
+      "executeOnce": true,
+      "typeVersion": 3.4
+    },
+    {
+      "id": "save-iteration-to-db",
+      "name": "Save Iteration to Database",
+      "type": "n8n-nodes-base.postgres",
+      "position": [4300, 300],
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "deep_research_metadata"
+        },
+        "updateKey": "id",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.research_id }}",
+            "learnings_iteration_1": "={{ $json.current_iteration === 1 ? $json.iteration_learnings : undefined }}",
+            "learnings_iteration_2": "={{ $json.current_iteration === 2 ? $json.iteration_learnings : undefined }}",
+            "learnings_iteration_3": "={{ $json.current_iteration === 3 ? $json.iteration_learnings : undefined }}",
+            "learnings_iteration_4": "={{ $json.current_iteration === 4 ? $json.iteration_learnings : undefined }}",
+            "learnings_iteration_5": "={{ $json.current_iteration === 5 ? $json.iteration_learnings : undefined }}"
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "postgres-local",
+          "name": "Local PostgreSQL"
+        }
+      },
+      "typeVersion": 2.4
+    },
+    {
+      "id": "check-depth-limit",
+      "name": "Check if More Iterations Needed",
+      "type": "n8n-nodes-base.if",
+      "position": [4500, 300],
+      "parameters": {
+        "options": {},
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "depth-check",
+              "operator": {
+                "type": "number",
+                "operation": "smaller"
+              },
+              "leftValue": "={{ $json.current_iteration }}",
+              "rightValue": "={{ $json.max_depth }}"
+            }
+          ]
+        }
+      },
+      "typeVersion": 2.2
+    },
+    {
+      "id": "continue-research-loop",
+      "name": "Continue Research (Next Iteration)",
+      "type": "n8n-nodes-base.set",
+      "position": [4700, 200],
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "current_iteration",
+              "name": "current_iteration",
+              "type": "number", 
+              "value": "={{ $('update-iteration-data').item.json.current_iteration }}"
+            },
+            {
+              "id": "all_learnings",
+              "name": "all_learnings",
+              "type": "array",
+              "value": "={{ $('update-iteration-data').item.json.updated_learnings }}"
+            },
+            {
+              "id": "all_urls",
+              "name": "all_urls",
+              "type": "array",
+              "value": "={{ $('update-iteration-data').item.json.updated_urls }}"
+            },
+            {
+              "id": "research_id",
+              "name": "research_id",
+              "type": "string",
+              "value": "={{ $('update-iteration-data').item.json.research_id }}"
+            }
+          ]
+        }
+      }
+    }
